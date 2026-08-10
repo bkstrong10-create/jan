@@ -20,5 +20,8 @@ pub mod state;
 pub mod system;
 pub mod threads;
 
-#[cfg(all(not(any(target_os = "android", target_os = "ios")), not(feature = "cli")))]
+#[cfg(all(
+    not(any(target_os = "android", target_os = "ios")),
+    not(feature = "cli")
+))]
 pub mod updater;

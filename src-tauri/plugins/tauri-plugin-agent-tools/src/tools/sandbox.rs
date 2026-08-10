@@ -154,7 +154,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-
     #[test]
     fn restricted_agent_path_covers_config_but_not_approved_surface() {
         let root = unique_root();
@@ -173,8 +172,14 @@ mod tests {
         assert!(is_restricted_agent_path(&root, ".jan/agent/secrets.env"));
         // skills/ and memory/ are reachable only via the dedicated tools, so they
         // are restricted from the general filesystem tools too.
-        assert!(is_restricted_agent_path(&root, ".jan/agent/skills/deploy.md"));
-        assert!(is_restricted_agent_path(&root, ".jan/agent/memory/notes.md"));
+        assert!(is_restricted_agent_path(
+            &root,
+            ".jan/agent/skills/deploy.md"
+        ));
+        assert!(is_restricted_agent_path(
+            &root,
+            ".jan/agent/memory/notes.md"
+        ));
         // Only AGENT.md and unrelated project files stay reachable.
         assert!(!is_restricted_agent_path(&root, ".jan/agent/AGENT.md"));
         assert!(!is_restricted_agent_path(&root, "src/main.rs"));

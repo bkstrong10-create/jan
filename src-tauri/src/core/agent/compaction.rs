@@ -114,7 +114,11 @@ fn serialize_messages(messages: &[Value]) -> String {
         if let Some(calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
             let names: Vec<&str> = calls
                 .iter()
-                .filter_map(|c| c.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()))
+                .filter_map(|c| {
+                    c.get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(|n| n.as_str())
+                })
                 .collect();
             if !names.is_empty() {
                 line.push_str(&format!(" [tool_calls: {}]", names.join(", ")));
@@ -180,7 +184,10 @@ mod tests {
 
     #[tokio::test]
     async fn noop_when_nothing_to_compact() {
-        let model = StubModel { summary: "S".into(), calls: StdMutex::new(0) };
+        let model = StubModel {
+            summary: "S".into(),
+            calls: StdMutex::new(0),
+        };
         let input = convo(4);
         let out = compact_conversation(&input, "m", &model, DEFAULT_KEEP_RECENT).await;
         assert_eq!(out, input);
@@ -189,7 +196,10 @@ mod tests {
 
     #[tokio::test]
     async fn compacts_and_preserves_system_and_tail() {
-        let model = StubModel { summary: "CONDENSED".into(), calls: StdMutex::new(0) };
+        let model = StubModel {
+            summary: "CONDENSED".into(),
+            calls: StdMutex::new(0),
+        };
         let input = convo(20);
         let out = compact_conversation(&input, "m", &model, 4).await;
 
@@ -214,7 +224,10 @@ mod tests {
 
     #[tokio::test]
     async fn tail_never_starts_with_orphan_tool_result() {
-        let model = StubModel { summary: "S".into(), calls: StdMutex::new(0) };
+        let model = StubModel {
+            summary: "S".into(),
+            calls: StdMutex::new(0),
+        };
         let mut input = vec![json!({ "role": "system", "content": "sys" })];
         for i in 0..6 {
             input.push(json!({ "role": "user", "content": format!("u{i}") }));
@@ -228,6 +241,10 @@ mod tests {
         // advance it so the kept tail does not begin with a tool message.
         let out = compact_conversation(&input, "m", &model, 4).await;
         let first_kept = &out[2];
-        assert_ne!(role(first_kept), "tool", "kept tail must not start with a tool result");
+        assert_ne!(
+            role(first_kept),
+            "tool",
+            "kept tail must not start with a tool result"
+        );
     }
 }

@@ -153,7 +153,8 @@ pub fn discover(store: &Path) -> Vec<SkillEntry> {
     };
     // Keyed by name so a duplicate stem collapses to one entry; BTreeMap also
     // gives the sorted-by-name order for free.
-    let mut by_name: std::collections::BTreeMap<String, SkillEntry> = std::collections::BTreeMap::new();
+    let mut by_name: std::collections::BTreeMap<String, SkillEntry> =
+        std::collections::BTreeMap::new();
     let mut consider = |entry: SkillEntry| {
         match by_name.get(&entry.name) {
             // Keep an existing folder entry over an incoming flat one.
@@ -256,7 +257,11 @@ pub fn list_meta(store: &Path) -> Vec<SkillMeta> {
 /// Filter discovered skills by the `[skills].enabled` whitelist and one
 /// invocation side. Skills with neither a description nor a body are skipped
 /// (nothing to advertise or invoke).
-fn side_catalog(root: &Path, enabled: &[String], side: impl Fn(&ParsedSkill) -> bool) -> Vec<SkillMeta> {
+fn side_catalog(
+    root: &Path,
+    enabled: &[String],
+    side: impl Fn(&ParsedSkill) -> bool,
+) -> Vec<SkillMeta> {
     let allow: Option<std::collections::HashSet<&str>> =
         (!enabled.is_empty()).then(|| enabled.iter().map(String::as_str).collect());
     discover(root)
@@ -374,7 +379,6 @@ pub(crate) fn parse_invocation(text: &str) -> Option<(String, String)> {
     None
 }
 
-
 /// Create or overwrite a skill. Existing skills are written in place (preserving
 /// their form); new skills are written as the folder form `<name>/SKILL.md`.
 pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
@@ -444,7 +448,10 @@ mod tests {
     fn discover_finds_folder_and_flat_skills_sorted() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_test_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         std::fs::create_dir_all(dir.join("b_folder")).unwrap();
@@ -460,7 +467,10 @@ mod tests {
     fn write_new_creates_folder_form_read_delete_roundtrip() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_rt_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         write(&root, "deploy", "---\ndescription: d\n---\nbody").unwrap();
         assert!(skills_dir(&root).join("deploy").join("SKILL.md").is_file());
@@ -488,7 +498,8 @@ mod tests {
         assert_eq!(name, "deploy");
         assert_eq!(args, "");
         // Mid-prompt: surrounding prose collapses into args.
-        let (name, args) = parse_invocation("fix the auth flow /skill:deploy focus on security").unwrap();
+        let (name, args) =
+            parse_invocation("fix the auth flow /skill:deploy focus on security").unwrap();
         assert_eq!(name, "deploy");
         assert_eq!(args, "fix the auth flow focus on security");
         // Token at the end: only the prose before it.
@@ -537,7 +548,10 @@ mod tests {
     fn catalog_and_user_catalog_split_invocation_sides() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_sides_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         let write = |name: &str, fm: &str| {
@@ -554,14 +568,27 @@ mod tests {
 
         let model: Vec<_> = catalog(&root, &[]).into_iter().map(|m| m.name).collect();
         assert_eq!(model, vec!["both", "model_only"], "model side: {model:?}");
-        let user: Vec<_> = user_catalog(&root, &[]).into_iter().map(|m| m.name).collect();
+        let user: Vec<_> = user_catalog(&root, &[])
+            .into_iter()
+            .map(|m| m.name)
+            .collect();
         assert_eq!(user, vec!["both", "user_only"], "user side: {user:?}");
 
         // Both flags still visible to the management list.
         let all = list_meta(&root);
         assert_eq!(all.len(), 3);
-        assert!(!all.iter().find(|m| m.name == "model_only").unwrap().user_invocable);
-        assert!(!all.iter().find(|m| m.name == "user_only").unwrap().model_invocable);
+        assert!(
+            !all.iter()
+                .find(|m| m.name == "model_only")
+                .unwrap()
+                .user_invocable
+        );
+        assert!(
+            !all.iter()
+                .find(|m| m.name == "user_only")
+                .unwrap()
+                .model_invocable
+        );
 
         // User invocation refuses model-only skills.
         assert!(build_invocation_message(&root, "model_only", "").is_err());
@@ -573,7 +600,10 @@ mod tests {
     fn build_invocation_message_injects_body_and_args() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_inv_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(skills_dir(&root).join("deploy")).unwrap();
         std::fs::write(
@@ -584,7 +614,10 @@ mod tests {
 
         let (msg, description) = build_invocation_message(&root, "deploy", "staging").unwrap();
         assert_eq!(description, "Ship it");
-        assert!(msg.contains("You have invoked the \"deploy\" skill"), "{msg}");
+        assert!(
+            msg.contains("You have invoked the \"deploy\" skill"),
+            "{msg}"
+        );
         assert!(msg.contains("# Deploy\n\nRun the script."), "body: {msg}");
         assert!(msg.contains("Skill directory:"), "folder announced: {msg}");
         assert!(msg.contains("User: staging"), "{msg}");
@@ -596,7 +629,10 @@ mod tests {
             "[skills]\nenabled = [\"other\"]\n",
         )
         .unwrap();
-        assert!(build_invocation_message(&root, "deploy", "").is_err(), "disabled");
+        assert!(
+            build_invocation_message(&root, "deploy", "").is_err(),
+            "disabled"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -604,7 +640,10 @@ mod tests {
     fn catalog_enabled_whitelist_filters() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_wl_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         write(&root, "a", "body a").unwrap();
         write(&root, "b", "body b").unwrap();
@@ -623,14 +662,20 @@ mod tests {
     fn write_existing_flat_stays_flat() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_flat_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("legacy.md"), "old").unwrap();
 
         write(&root, "legacy", "new").unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("legacy.md")).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("legacy.md")).unwrap(),
+            "new"
+        );
         assert!(!dir.join("legacy").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -642,7 +687,10 @@ mod tests {
         // an edit isn't swallowed into a flat file the reader ignores.
         let root = std::env::temp_dir().join(format!(
             "jan_skills_both_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         std::fs::create_dir_all(dir.join("dup")).unwrap();

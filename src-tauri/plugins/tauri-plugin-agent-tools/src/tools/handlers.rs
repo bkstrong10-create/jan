@@ -653,7 +653,8 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 
     // No confinement available means no shell: running unsandboxed would give the
     // command the whole machine, which is never what the caller asked for.
-    let mut policy = jail::Policy::new(root, ctx.allow_network).with_home_readonly(ctx.home_readonly);
+    let mut policy =
+        jail::Policy::new(root, ctx.allow_network).with_home_readonly(ctx.home_readonly);
     if let Some(mask) = ctx.mask_root {
         policy = policy.with_mask_root(mask);
     }
@@ -1317,7 +1318,10 @@ mod tests {
             &[json!({"old_string": "two", "new_string": "TWO"})],
             "one\ntwo\nthree",
         );
-        assert_eq!(d, "     1 | one\n-    2 | two\n+    2 | TWO\n     3 | three");
+        assert_eq!(
+            d,
+            "     1 | one\n-    2 | two\n+    2 | TWO\n     3 | three"
+        );
     }
 
     /// Two edits far apart in one call: each hunk carries its own file context
@@ -1632,7 +1636,10 @@ mod tests {
             &ctx,
         )
         .await;
-        assert!(out.starts_with("ERROR: refused to write outside"), "got: {out}");
+        assert!(
+            out.starts_with("ERROR: refused to write outside"),
+            "got: {out}"
+        );
         assert!(!root.parent().unwrap().join("escape.txt").exists());
 
         let out = super::execute_builtin(
@@ -1641,7 +1648,10 @@ mod tests {
             &ctx,
         )
         .await;
-        assert!(out.starts_with("ERROR: refused to edit outside"), "got: {out}");
+        assert!(
+            out.starts_with("ERROR: refused to edit outside"),
+            "got: {out}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -2212,12 +2222,9 @@ mod tests {
             write_off.starts_with("ERROR"),
             "disabled write: {write_off}"
         );
-        let r = super::execute_builtin(
-            lookup("skill_read").unwrap(),
-            &json!({"name": "off"}),
-            &ctx,
-        )
-        .await;
+        let r =
+            super::execute_builtin(lookup("skill_read").unwrap(), &json!({"name": "off"}), &ctx)
+                .await;
         assert!(r.starts_with("ERROR"), "still disabled after write");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -2242,7 +2249,10 @@ mod tests {
 
         let list = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
         assert!(list.contains("plain"), "list: {list}");
-        assert!(!list.contains("internal ritual"), "user-only skill leaked: {list}");
+        assert!(
+            !list.contains("internal ritual"),
+            "user-only skill leaked: {list}"
+        );
 
         let read_secret = execute_builtin(
             lookup("skill_read").unwrap(),
@@ -2250,7 +2260,10 @@ mod tests {
             &root,
         )
         .await;
-        assert!(read_secret.starts_with("ERROR"), "user-only read: {read_secret}");
+        assert!(
+            read_secret.starts_with("ERROR"),
+            "user-only read: {read_secret}"
+        );
 
         let read_plain = execute_builtin(
             lookup("skill_read").unwrap(),

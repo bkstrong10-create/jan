@@ -7,7 +7,7 @@ import { route } from '@/constants/routes'
 import { Button } from '@/components/ui/button'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { FileDiff, GitBranch, Folder, Sparkles, ListTodo, Eye } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { invoke, Channel } from '@tauri-apps/api/core'
 import { cn, getProviderTitle, getModelDisplayName } from '@/lib/utils'
@@ -55,7 +55,6 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useMessageErrors } from '@/stores/message-errors'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
-import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import {
   Conversation,
@@ -244,18 +243,17 @@ function CodePage() {
 
   // Local (llamacpp) models can take a while to load before the first token.
   // The router emits `llamacpp-model-load-progress`, which LlamacppOomListener
-  // pipes into the global useAppState load state; we just flip `loadingModel`
-  // (the flag PromptProgress keys off) on for the code run so the shared
-  // progress card shows here too. Cleared once generation starts or the run ends.
-  const modelLoadingRef = useRef(false)
-  const finishModelLoad = () => {
-    if (!modelLoadingRef.current) return
-    modelLoadingRef.current = false
-    useAppState.getState().updateLoadingModel(false)
-    useAppState.getState().updateModelLoadProgress(undefined)
+  // forwards into this session's own slot of useCodeRun's per-session load
+  // state (keyed by session id, mirroring — but not sharing — the per-thread
+  // Records chat uses; see useCodeRun.loadingModels for why) — so a session
+  // loading in the background never shows on whichever session is currently
+  // being viewed. Cleared once generation starts or the run ends (`finally`,
+  // below).
+  const finishModelLoad = (sid: string) => {
+    if (!useCodeRun.getState().loadingModels[sid]) return
+    useCodeRun.getState().setSessionLoadingModel(sid, false)
+    useCodeRun.getState().setSessionModelLoadProgress(sid, undefined)
   }
-  // Clear the shared load flag if the user navigates away mid-load.
-  useEffect(() => finishModelLoad, [])
 
   // Same auto-scroll wiring the chat route uses, so the streaming reasoning
   // block scrolls and shows the scroll-to-bottom button identically here.
@@ -652,6 +650,14 @@ function CodePage() {
       .filter((m) => m.role === 'assistant')
       .forEach((m) => useMessageErrors.getState().clearError(m.id))
 
+    // Tracked for this run's whole duration (not just the cold-load window
+    // below), so the global OOM/backend-error listener can attribute a
+    // router-level failure to this session even if it happens mid-generation
+    // rather than mid-load — cleared in `finally`.
+    if (selectedProvider === 'llamacpp') {
+      run.setLlamacppRun(sid, selectedModel.id)
+    }
+
     // Local models load before the first token — but only on a cold start.
     // Probe the router (as the chat transport does) so the load card shows only
     // when the model isn't already loaded, not on every warm run.
@@ -659,9 +665,8 @@ function CodePage() {
       try {
         const loaded = await invoke<string[]>('plugin:llamacpp|get_loaded_models')
         if (!loaded.includes(selectedModel.id)) {
-          modelLoadingRef.current = true
-          useAppState.getState().updateModelLoadProgress(undefined)
-          useAppState.getState().updateLoadingModel(true)
+          run.setSessionModelLoadProgress(sid, undefined)
+          run.setSessionLoadingModel(sid, true)
         }
       } catch {
         // Probe failed; skip the load card rather than flash it every run.
@@ -720,11 +725,11 @@ function CodePage() {
       switch (ev.type) {
         case 'token':
           // First output means the model finished loading; drop the load card.
-          finishModelLoad()
+          finishModelLoad(sid)
           run.appendToken(sid, ev.text)
           break
         case 'tool_call':
-          finishModelLoad()
+          finishModelLoad(sid)
           run.pushToolTurn(sid, makeToolCallTurn(ev))
           break
         case 'tool_result': {
@@ -782,7 +787,7 @@ function CodePage() {
           run.endSubagent(sid, ev.run_id, ev.usage)
           break
         case 'subagent': {
-          finishModelLoad()
+          finishModelLoad(sid)
           const inner = ev.event
           // A gated tool INSIDE a subagent still needs the approval dialog —
           // otherwise the subagent (and the whole run) hangs on a decision the
@@ -820,8 +825,21 @@ function CodePage() {
       runError = String(e)
       toast.error(String(e))
     } finally {
+      // The run is over either way — stop attributing future router events
+      // (load-progress, OOM, backend-error) to this dead session.
+      run.clearLlamacppRun(sid)
+      // A cancel the OOM/backend-error listener triggered on this run reports
+      // as a clean 'cancelled' StreamEvent (ignored above, so runError is
+      // still null) with a friendlier message waiting here instead — that
+      // message wins over whatever the stream itself reported, including
+      // nothing at all.
+      const pendingLlamacppMessage = run.takePendingLlamacppError(sid)
+      if (pendingLlamacppMessage) {
+        runError = pendingLlamacppMessage
+        toast.error(pendingLlamacppMessage)
+      }
       // Drop the load card if the run ended before any stream event.
-      finishModelLoad()
+      finishModelLoad(sid)
       // Finalize interrupted tool turns + subagents, append an error turn if the
       // run failed — all keyed to `sid`. Commit the result onto the session so
       // it survives a session switch and app restart, then drop the transient
@@ -850,13 +868,20 @@ function CodePage() {
       // Regenerate) on the turn's assistant message, matching Home UI —
       // instead of a tool-error card (see codeTurns.ts for id scheme: 'c'
       // prefix once committed, matching how `committedMessages` renders it).
+      // A run that failed before any assistant content arrived (e.g. a local
+      // model that OOMs on load) has no assistant message to attach to —
+      // fall back to whatever the last message actually is (the user's own)
+      // rather than silently dropping the error. MessageItem's banner has no
+      // role restriction, and `onRegenerate` already re-sends the last user
+      // turn, so this reads correctly either way.
       if (runError) {
         const committed = codeTurnsToUIMessages(finalTurns, 'c')
         const lastAssistant = [...committed]
           .reverse()
           .find((m) => m.role === 'assistant')
-        if (lastAssistant) {
-          useMessageErrors.getState().setError(lastAssistant.id, runError)
+        const target = lastAssistant ?? committed[committed.length - 1]
+        if (target) {
+          useMessageErrors.getState().setError(target.id, runError)
         }
       }
 
@@ -1076,9 +1101,15 @@ function CodePage() {
                   ))}
                   {/* Mirrors the regular chat's own gate ($threadId.tsx): show the
                       shared card, unsuppressed, only before this turn's first
-                      visible content has arrived — once liveTurns has something,
-                      that content is itself the "it's working" signal. */}
-                  {running && liveTurns.length === 0 && <PromptProgress />}
+                      visible content has arrived. beginRun seeds liveTurns with
+                      the user's own turn, so "nothing yet" is length <= 1, not
+                      0 — once anything beyond that turn shows up, that content
+                      is itself the "it's working" signal. stateKey scopes the
+                      card to the viewed session, matching chat's per-thread
+                      isolation (see PromptProgress). */}
+                  {running && liveTurns.length <= 1 && (
+                    <PromptProgress stateKey={currentId ?? undefined} />
+                  )}
                 </ConversationContent>
                 <ConversationScrollButton />
               </Conversation>

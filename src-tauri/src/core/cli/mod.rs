@@ -1341,7 +1341,10 @@ mod tests {
         );
         // Anything that is not the exact machine wrapper stays None.
         assert_eq!(invocation_label("deploy"), None);
-        assert_eq!(invocation_label("[IMPORTANT: You have invoked the \"\" skill - x"), None);
+        assert_eq!(
+            invocation_label("[IMPORTANT: You have invoked the \"\" skill - x"),
+            None
+        );
         assert_eq!(
             invocation_label("[IMPORTANT: You have invoked the \"deploy\" skill"), // truncated wrapper
             None

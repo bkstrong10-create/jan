@@ -1683,6 +1683,7 @@ impl App {
                 out.push(SlashMatch::PluginCommand {
                     name,
                     description: cmd.description.clone(),
+                    hints: cmd.hints.clone(),
                 });
             }
         }
@@ -5143,8 +5144,13 @@ struct SlashCommand {
 enum SlashMatch {
     Command(&'static SlashCommand),
     /// A plugin command prompt template. `name` is the full invocation
-    /// (`/feature-dev` short form or `/command:<plugin>:<name>` explicit).
-    PluginCommand { name: String, description: String },
+    /// (`/feature-dev` short form or `/command:<plugin>:<name>` explicit);
+    /// `hints` are the placeholders the template accepts (`$ARGUMENTS`, `$1`).
+    PluginCommand {
+        name: String,
+        description: String,
+        hints: Vec<String>,
+    },
     Skill { name: String, description: String },
 }
 
@@ -7578,16 +7584,27 @@ fn draw_slash_hints(
                 spans.push(Span::styled(format!("  {}", c.description), dim));
                 ListItem::new(Line::from(spans))
             }
-            SlashMatch::PluginCommand { name, description } => {
+            SlashMatch::PluginCommand {
+                name,
+                description,
+                hints,
+            } => {
                 let desc = if description.is_empty() {
                     "plugin command".to_string()
                 } else {
                     description.clone()
                 };
-                ListItem::new(Line::from(vec![
+                let mut spans = vec![
                     Span::styled(name.clone(), Style::new().green().bold()),
                     Span::styled(format!("  {desc}"), dim),
-                ]))
+                ];
+                if !hints.is_empty() {
+                    spans.push(Span::styled(
+                        format!("  [{}]", hints.join(" ")),
+                        Style::new().dark_gray(),
+                    ));
+                }
+                ListItem::new(Line::from(spans))
             }
             SlashMatch::Skill { name, description } => {
                 let desc = if description.is_empty() {
@@ -14937,7 +14954,7 @@ mod tests {
             &root,
             "feature-dev",
             "feature-dev",
-            "---\ndescription: Guided feature workflow\n---\nDo it.",
+            "---\ndescription: Guided feature workflow\n---\nDo it with $ARGUMENTS.",
         );
         // Short form: the plain name is offered.
         app.input = "/fea".into();
@@ -14953,6 +14970,11 @@ mod tests {
             "command explicit form offered: {:?}",
             names(&app)
         );
+        // Template placeholders surface as hints on the popup row.
+        assert!(app.slash_matches().iter().any(|m| matches!(
+            m,
+            super::SlashMatch::PluginCommand { hints, .. } if hints == &vec!["$ARGUMENTS".to_string()]
+        )));
         let _ = std::fs::remove_dir_all(&root);
     }
 

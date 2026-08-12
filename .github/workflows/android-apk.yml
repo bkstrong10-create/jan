@@ -1,0 +1,82 @@
+name: Build Jan Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018"
+
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install Jan dependencies
+        run: |
+          yarn install
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+
+      - name: Initialize Android project
+        run: |
+          if [ ! -d src-tauri/gen/android ]; then
+            yarn tauri android init
+          fi
+
+      - name: Prepare mobile assets
+        run: |
+          yarn build:icon
+          yarn copy:assets:mobile
+
+      - name: Build ARM64 APK
+        env:
+          IS_CLEAN: "true"
+        run: |
+          yarn tauri android build --apk --target aarch64 -- \
+            --no-default-features \
+            --features mobile
+
+      - name: Find APK
+        run: find src-tauri/gen/android -type f -name "*.apk" -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jan-Android-ARM64
+          path: src-tauri/gen/android/app/build/outputs/**/*.apk
+          if-no-files-found: error

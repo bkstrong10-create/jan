@@ -54,9 +54,8 @@ jobs:
 
       - name: Initialize Android project
         run: |
-          if [ ! -d src-tauri/gen/android ]; then
-            yarn tauri android init
-          fi
+          rm -rf src-tauri/gen/android
+          yarn tauri android init
 
       - name: Prepare mobile assets
         run: |

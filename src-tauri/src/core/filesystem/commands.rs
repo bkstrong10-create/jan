@@ -2,7 +2,11 @@
 // It's added to ensure the legacy implementation from frontend still functions before removal.
 use super::helpers::{resolve_app_path_within_jan_data_folder, resolve_path};
 use super::models::{DialogOpenOptions, FileStat};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use rfd::AsyncFileDialog;
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+use tauri_plugin_dialog::DialogExt;
 use std::fs;
 use tauri::Runtime;
 
@@ -261,6 +265,7 @@ pub(crate) fn unpack_archive(
 }
 
 // rfd native file dialog
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub async fn open_dialog(
     options: Option<DialogOpenOptions>,
@@ -307,6 +312,7 @@ pub async fn open_dialog(
     Ok(result.map(|file| serde_json::Value::String(file.path().to_string_lossy().to_string())))
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub async fn save_dialog(options: Option<DialogOpenOptions>) -> Result<Option<String>, String> {
     let mut dialog = AsyncFileDialog::new();
@@ -328,4 +334,95 @@ pub async fn save_dialog(options: Option<DialogOpenOptions>) -> Result<Option<St
 
     let result = dialog.save_file().await;
     Ok(result.map(|file| file.path().to_string_lossy().to_string()))
+}
+
+
+// ------------------------------------------------------------
+// Mobile native dialogs
+// rfd does not support Android/iOS, so use tauri-plugin-dialog.
+// ------------------------------------------------------------
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+pub async fn open_dialog<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    options: Option<DialogOpenOptions>,
+) -> Result<Option<serde_json::Value>, String> {
+    let mut dialog = app.dialog().file();
+
+    let mut directory = false;
+    let mut multiple = false;
+
+    if let Some(opts) = options {
+        directory = opts.directory.unwrap_or(false);
+        multiple = opts.multiple.unwrap_or(false);
+
+        if let Some(path) = opts.default_path {
+            dialog = dialog.set_directory(path);
+        }
+
+        if let Some(filters) = opts.filters {
+            for filter in filters {
+                let extensions: Vec<&str> =
+                    filter.extensions.iter().map(|s| s.as_str()).collect();
+
+                dialog = dialog.add_filter(&filter.name, &extensions);
+            }
+        }
+    }
+
+    // tauri-plugin-dialog 2.2.1 does not provide mobile folder picking.
+    if directory {
+        return Err(
+            "Folder picking is not supported on mobile yet".to_string()
+        );
+    }
+
+    if multiple {
+        let result = dialog.blocking_pick_files();
+
+        return Ok(result.map(|files| {
+            serde_json::Value::Array(
+                files
+                    .into_iter()
+                    .map(|file| serde_json::Value::String(file.to_string()))
+                    .collect(),
+            )
+        }));
+    }
+
+    let result = dialog.blocking_pick_file();
+
+    Ok(result.map(|file| {
+        serde_json::Value::String(file.to_string())
+    }))
+}
+
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+pub async fn save_dialog<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    options: Option<DialogOpenOptions>,
+) -> Result<Option<String>, String> {
+    let mut dialog = app.dialog().file();
+
+    if let Some(opts) = options {
+        if let Some(path) = opts.default_path {
+            dialog = dialog.set_directory(path);
+        }
+
+        if let Some(filters) = opts.filters {
+            for filter in filters {
+                let extensions: Vec<&str> =
+                    filter.extensions.iter().map(|s| s.as_str()).collect();
+
+                dialog = dialog.add_filter(&filter.name, &extensions);
+            }
+        }
+    }
+
+    Ok(dialog
+        .blocking_save_file()
+        .map(|file| file.to_string()))
 }

@@ -239,6 +239,11 @@ pub fn run() {
         .plugin(tauri_plugin_rag::init())
         .plugin(tauri_plugin_websearch::init());
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        app_builder = app_builder.plugin(tauri_plugin_dialog::init());
+    }
+
     #[cfg(feature = "deep-link")]
     {
         app_builder = app_builder.plugin(tauri_plugin_deep_link::init());

@@ -116,11 +116,6 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7.14"
 url = "2.5"
 uuid = { version = "1.7", features = ["v4"] }
-rfd = { version = "0.15.4", default-features = false, features = [
-  "tokio",
-  "xdg-portal",
-  "common-controls-v6",
-] }
 chrono = { version = "0.4", features = ["serde"] }
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 futures = "0.3"
@@ -166,6 +161,11 @@ windows-sys = { version = "0.60.2", features = ["Win32_Storage_FileSystem"] }
 tauri-plugin-mlx = { path = "./plugins/tauri-plugin-mlx" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+rfd = { version = "0.15.4", default-features = false, features = [
+  "tokio",
+  "xdg-portal",
+  "common-controls-v6",
+] }
 tauri-plugin-http = { version = "2", default-features = false, features = [
   "native-tls",
   "http2",

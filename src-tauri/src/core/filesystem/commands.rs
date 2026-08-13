@@ -3,11 +3,7 @@
 use super::helpers::{resolve_app_path_within_jan_data_folder, resolve_path};
 use super::models::{DialogOpenOptions, FileStat};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use rfd::AsyncFileDialog;
-
-#[cfg(any(target_os = "android", target_os = "ios"))]
-use tauri_plugin_dialog::DialogExt;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri_plugin_dialog::DialogExt;
